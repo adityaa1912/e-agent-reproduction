@@ -31,6 +31,10 @@ from eagent.models.factory import (  # noqa: E402
     create_model,
     create_planner,
 )
+from eagent.models.providers.transformers import (  # noqa: E402
+    RealTransformersVisionLanguageModel,
+)
+from eagent.models.providers.transformers import RealTransformersVisionLanguageModel  # noqa: E402
 from eagent.models.protocols import (  # noqa: E402
     ModelRequest,
     ModelResponse,
@@ -103,6 +107,126 @@ class InstanceIndependenceTests(unittest.TestCase):
         # Distinct objects with distinct configured names.
         self.assertIsNot(planner, executor)
         self.assertNotEqual(planner.model_name, executor.model_name)
+
+
+class UnsupportedProviderTests(unittest.TestCase):
+    def test_research_provider_raises(self) -> None:
+        spec = ModelSpec(provider="research", model_name="InternVL2-8B")
+        with self.assertRaises(UnsupportedProviderError):
+            create_model(spec)
+
+    def test_unknown_provider_raises(self) -> None:
+        spec = ModelSpec(provider="nonexistent_provider", model_name="dummy")
+        with self.assertRaises(UnsupportedProviderError):
+            create_model(spec)
+
+    def test_research_error_message_mentions_executable_providers(self) -> None:
+        spec = ModelSpec(provider="research", model_name="InternVL2-8B")
+        with self.assertRaises(UnsupportedProviderError) as ctx:
+            create_model(spec)
+        msg = str(ctx.exception).lower()
+        self.assertIn("research", msg)
+        self.assertIn("stub", msg)
+        self.assertIn("real_transformers", msg)
+
+    def test_research_provider_does_not_create_planner(self) -> None:
+        config = EAgentModelConfig(
+            mode=RuntimeMode.RESEARCH,
+            planner=ModelSpec(provider="research", model_name="InternVL2-8B"),
+            executor=ModelSpec(provider="research", model_name="Qwen2-VL-72B"),
+        )
+        with self.assertRaises(UnsupportedProviderError):
+            create_planner(config)
+
+    def test_research_provider_does_not_create_executor(self) -> None:
+        config = EAgentModelConfig(
+            mode=RuntimeMode.RESEARCH,
+            planner=ModelSpec(provider="research", model_name="InternVL2-8B"),
+            executor=ModelSpec(provider="research", model_name="Qwen2-VL-72B"),
+        )
+        with self.assertRaises(UnsupportedProviderError):
+            create_executor(config)
+
+
+class TransformersProviderTests(unittest.TestCase):
+    """Tests for the ``real_transformers`` VisionLanguageModel provider.
+
+    These tests construct provider instances and assert the factory wiring
+    without downloading weights or running inference (``transformers`` is
+    imported lazily inside ``generate``).
+    """
+
+    def test_real_transformers_provider_exists(self) -> None:
+        spec = ModelSpec(
+            provider="real_transformers",
+            model_name="HuggingFaceTB/SmolVLM-256M-Instruct",
+        )
+        model = create_model(spec)
+        self.assertIsInstance(model, RealTransformersVisionLanguageModel)
+        self.assertEqual(model.model_name, "HuggingFaceTB/SmolVLM-256M-Instruct")
+
+    def test_default_model_id_is_smlvlm(self) -> None:
+        model = RealTransformersVisionLanguageModel()
+        self.assertEqual(model.model_name, RealTransformersVisionLanguageModel.DEFAULT_MODEL_ID)
+        self.assertEqual(model.model_name, "HuggingFaceTB/SmolVLM-256M-Instruct")
+
+    def test_factory_creates_real_transformers_planner(self) -> None:
+        config = EAgentModelConfig(
+            mode=RuntimeMode.DEVELOPMENT,
+            planner=ModelSpec(
+                provider="real_transformers",
+                model_name="HuggingFaceTB/SmolVLM-256M-Instruct",
+            ),
+            executor=ModelSpec(
+                provider="real_transformers",
+                model_name="HuggingFaceTB/SmolVLM-256M-Instruct",
+            ),
+        )
+        planner = create_planner(config)
+        self.assertIsInstance(planner, RealTransformersVisionLanguageModel)
+        self.assertEqual(planner.model_name, "HuggingFaceTB/SmolVLM-256M-Instruct")
+
+    def test_factory_creates_real_transformers_executor(self) -> None:
+        config = EAgentModelConfig(
+            mode=RuntimeMode.DEVELOPMENT,
+            planner=ModelSpec(
+                provider="real_transformers",
+                model_name="HuggingFaceTB/SmolVLM-256M-Instruct",
+            ),
+            executor=ModelSpec(
+                provider="real_transformers",
+                model_name="HuggingFaceTB/SmolVLM-256M-Instruct",
+            ),
+        )
+        executor = create_executor(config)
+        self.assertIsInstance(executor, RealTransformersVisionLanguageModel)
+
+    def test_real_transformers_not_research(self) -> None:
+        spec = ModelSpec(
+            provider="real_transformers",
+            model_name="HuggingFaceTB/SmolVLM-256M-Instruct",
+        )
+        self.assertIsInstance(create_model(spec), RealTransformersVisionLanguageModel)
+        with self.assertRaises(UnsupportedProviderError):
+            create_model(ModelSpec(provider="research", model_name="InternVL2-8B"))
+
+    def test_real_transformers_no_weights_on_import(self) -> None:
+        import sys
+
+        before = set(sys.modules)
+        RealTransformersVisionLanguageModel()
+        after = set(sys.modules)
+        downloaded = after - before
+        hf_downloaded = {
+            m for m in downloaded
+            if "huggingface" in m.lower() or "transformers" in m.lower()
+        }
+        self.assertEqual(hf_downloaded, set())
+
+    def test_model_name_returns_specified_id(self) -> None:
+        custom_id = "custom/model-id"
+        model = RealTransformersVisionLanguageModel(model_id=custom_id)
+        self.assertEqual(model.model_name, custom_id)
 
 
 if __name__ == "__main__":
