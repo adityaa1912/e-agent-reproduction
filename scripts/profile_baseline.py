@@ -179,8 +179,8 @@ def main() -> None:
     serial_mean, serial_sd = _bench_serialization(N)
     config_mean, config_sd = _bench_config_build(N)
     rebuild_mean, rebuild_sd = _bench_executor_rebuild(N)
-    baseline_time = _run_test_suite(".", ["discover", "-s", "tests", "-t", "."])
-    model_time = _run_test_suite("..", ["discover", "-s", "tests"])
+    baseline_time = _run_test_suite(Path(__file__).resolve().parents[1] / "efficient_agent_optimizing_planning_capability_for_multimodal_retrieval_augmented_generation", ["discover", "-s", "tests", "-t", "."])
+    model_time = _run_test_suite(Path(__file__).resolve().parents[1], ["discover", "-s", "tests", "-t", "."])
     total_mean = planner_mean + parse_mean + executor_mean
     total_sd = (planner_sd ** 2 + parse_sd ** 2 + executor_sd ** 2) ** 0.5
     print(f"iterations: {N}")
