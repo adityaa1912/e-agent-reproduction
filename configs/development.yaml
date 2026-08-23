@@ -1,0 +1,9 @@
+mode: development
+
+planner:
+  provider: stub
+  model_name: stub-planner
+
+executor:
+  provider: stub
+  model_name: stub-executor

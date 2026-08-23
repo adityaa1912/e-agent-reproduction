@@ -1,0 +1,12 @@
+# Records the paper's research setup (Section 4 / 5.2).
+# NOTE: This does NOT mean a `research` provider is implemented. The real
+# InternVL2-8B and Qwen2-VL-72B providers are not implemented at this step.
+mode: research
+
+planner:
+  provider: research
+  model_name: InternVL2-8B
+
+executor:
+  provider: research
+  model_name: Qwen2-VL-72B

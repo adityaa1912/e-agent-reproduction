@@ -1,0 +1,33 @@
+mode: research
+
+planner:
+  provider: research
+  model_name: InternVL2-8B
+
+executor:
+  provider: research
+  model_name: Qwen2-VL-72B
+
+tools:
+  image_search:
+    provider: baidu
+  text_search:
+    provider: tavily
+
+dataset:
+  benchmark_size: 200
+  planner_train_samples: 10000
+
+planner_training:
+  base_model: InternVL2-8B
+  train_samples: 10000
+  objective: null
+  optimizer: null
+  learning_rate: null
+  scheduler: null
+  epochs: null
+  batch_size: null
+  precision: null
+  seed: null
+  hardware: null
+  data_split: null

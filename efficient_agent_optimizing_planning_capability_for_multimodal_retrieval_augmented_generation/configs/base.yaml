@@ -1,0 +1,33 @@
+mode: development
+
+planner:
+  provider: stub
+  model_name: stub-planner
+
+executor:
+  provider: stub
+  model_name: stub-executor
+
+tools:
+  image_search:
+    provider: stub
+  text_search:
+    provider: stub
+
+dataset:
+  benchmark_size: 200
+  planner_train_samples: 10000
+
+planner_training:
+  base_model: InternVL2-8B
+  train_samples: 10000
+  objective: null
+  optimizer: null
+  learning_rate: null
+  scheduler: null
+  epochs: null
+  batch_size: null
+  precision: null
+  seed: null
+  hardware: null
+  data_split: null

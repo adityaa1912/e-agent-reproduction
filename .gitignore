@@ -1,0 +1,72 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Secrets and environment files
+.env
+.env.*
+!.env.example
+
+# Test and tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE / editor
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Build / packaging
+build/
+dist/
+*.egg-info/
+pip-wheel-metadata/
+
+# ML artifacts
+checkpoints/
+runs/
+wandb/
+mlruns/
+*.ckpt
+*.pt
+*.pth
+*.safetensors
+
+# Datasets
+data/
+datasets/
+
+# Internal research tooling
+.paper2code/
+.paper2code_work/
+
+# Postman local workspace
+.postman/
+
+# Certificates / private keys
+*.pem
+*.key
+
+# Archives / large generated files
+*.zip
+*.tar
+*.tar.gz
