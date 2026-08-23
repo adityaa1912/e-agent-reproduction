@@ -6,7 +6,11 @@ arXiv: `2508.08816`
 
 ## Reproduction status
 
-**NOT REPRODUCED.** No experiment from the paper has been run. This repository is a faithful *skeleton* of the E-Agent plan-then-execute architecture where the paper specifies it, plus clearly labelled scaffolding and development doubles where it does not. See `REPRODUCTION_NOTES.md` before using anything here.
+**NOT REPRODUCED.** No experiment from the paper has been run.
+
+This repository is a deterministic offline implementation of the E-Agent architecture described in arXiv:2508.08816. It is not a reproduction of the paper's experimental results. The real research models, datasets, live retrieval services, undisclosed prompts, and complete metric definitions are unavailable or unimplemented.
+
+This repository is a faithful *skeleton* of the E-Agent plan-then-execute architecture where the paper specifies it, plus clearly labelled scaffolding and development doubles where it does not. See `REPRODUCTION_NOTES.md` before using anything here.
 
 ## What this implements
 

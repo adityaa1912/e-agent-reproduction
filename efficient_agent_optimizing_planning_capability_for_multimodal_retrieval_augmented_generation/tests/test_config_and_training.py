@@ -1,16 +1,16 @@
 import unittest
+from pathlib import Path
 
 import tests._paths
 
 from eagent_baseline.config import BaselineConfig, RuntimeMode, default_config_path
 from eagent_baseline.data import QuestionType, RemPlanInstance
 from eagent_baseline.models import build_executor_model, build_planner_model
+from eagent.models.factory import UnsupportedProviderError
 from eagent_baseline.plan import MRAGPlan, PlanStep, ToolName
 from eagent_baseline.training import PlannerTrainingScaffold
 
-
-def _config() -> BaselineConfig:
-    return BaselineConfig.from_yaml(default_config_path())
+from tests._fixtures import _config
 
 
 class ConfigTests(unittest.TestCase):
@@ -24,6 +24,35 @@ class ConfigTests(unittest.TestCase):
         config = _config()
         self.assertEqual(build_planner_model(config).model_name, "stub-planner")
         self.assertEqual(build_executor_model(config).model_name, "stub-executor")
+
+    def test_research_config_loads(self) -> None:
+        research_path = Path(__file__).resolve().parents[1] / "configs" / "research.yaml"
+        config = BaselineConfig.from_yaml(research_path)
+        self.assertEqual(config.mode, RuntimeMode.RESEARCH)
+
+    def test_research_config_records_paper_models(self) -> None:
+        research_path = Path(__file__).resolve().parents[1] / "configs" / "research.yaml"
+        config = BaselineConfig.from_yaml(research_path)
+        self.assertEqual(config.planner.model_name, "InternVL2-8B")
+        self.assertEqual(config.executor.model_name, "Qwen2-VL-72B")
+
+    def test_research_config_records_search_services(self) -> None:
+        research_path = Path(__file__).resolve().parents[1] / "configs" / "research.yaml"
+        config = BaselineConfig.from_yaml(research_path)
+        self.assertEqual(config.tools.image_search.provider, "baidu")
+        self.assertEqual(config.tools.text_search.provider, "tavily")
+
+    def test_research_planner_model_raises_unsupported_provider(self) -> None:
+        research_path = Path(__file__).resolve().parents[1] / "configs" / "research.yaml"
+        config = BaselineConfig.from_yaml(research_path)
+        with self.assertRaises(UnsupportedProviderError):
+            build_planner_model(config)
+
+    def test_research_executor_model_raises_unsupported_provider(self) -> None:
+        research_path = Path(__file__).resolve().parents[1] / "configs" / "research.yaml"
+        config = BaselineConfig.from_yaml(research_path)
+        with self.assertRaises(UnsupportedProviderError):
+            build_executor_model(config)
 
 
 class TrainingScaffoldTests(unittest.TestCase):

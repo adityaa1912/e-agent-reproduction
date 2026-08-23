@@ -5,7 +5,6 @@ import tests._paths
 from eagent.common.types import Image
 
 from eagent_baseline.models import build_executor_model
-from eagent_baseline.config import BaselineConfig, default_config_path
 from eagent_baseline.tools import (
     ImageSearchTool,
     RequeryTool,
@@ -15,9 +14,7 @@ from eagent_baseline.tools import (
     TextSearchTool,
 )
 
-
-def _config() -> BaselineConfig:
-    return BaselineConfig.from_yaml(default_config_path())
+from tests._fixtures import _config
 
 
 class SearchToolTests(unittest.TestCase):
@@ -56,6 +53,18 @@ class MLLMToolTests(unittest.TestCase):
         self.assertIsInstance(result.content, str)
         self.assertEqual(result.metadata["model_name"], "stub-executor")
 
+    def test_requery_requires_non_empty_question(self) -> None:
+        model = build_executor_model(_config())
+        tool = RequeryTool(model)
+        with self.assertRaises(TypeError):
+            tool.run(question="", image=Image(url="x"), image_search_results=[])
+
+    def test_requery_input_contract_question_type(self) -> None:
+        model = build_executor_model(_config())
+        tool = RequeryTool(model)
+        with self.assertRaises(TypeError):
+            tool.run(question=123, image=Image(url="x"), image_search_results=[])
+
     def test_response_uses_model(self) -> None:
         model = build_executor_model(_config())
         tool = ResponseTool(model)
@@ -67,6 +76,42 @@ class MLLMToolTests(unittest.TestCase):
         )
         self.assertEqual(result.tool, "response")
         self.assertIsInstance(result.content, str)
+
+    def test_response_requires_non_empty_question(self) -> None:
+        model = build_executor_model(_config())
+        tool = ResponseTool(model)
+        with self.assertRaises(TypeError):
+            tool.run(question="", image=Image(url="x"), image_search_results=[], text_search_results=[])
+
+    def test_response_input_contract_all_parameters_passed(self) -> None:
+        model = build_executor_model(_config())
+        tool = ResponseTool(model)
+        result = tool.run(
+            question="q",
+            image=Image(url="x"),
+            image_search_results=[{"url": "img1"}],
+            text_search_results=[{"url": "txt1"}],
+        )
+        self.assertEqual(result.tool, "response")
+        self.assertTrue(isinstance(result.content, str))
+
+    def test_image_search_tool_name(self) -> None:
+        tool = ImageSearchTool()
+        self.assertEqual(tool.name, "image_search")
+
+    def test_text_search_tool_name(self) -> None:
+        tool = TextSearchTool()
+        self.assertEqual(tool.name, "text_search")
+
+    def test_requery_tool_name(self) -> None:
+        model = build_executor_model(_config())
+        tool = RequeryTool(model)
+        self.assertEqual(tool.name, "requery")
+
+    def test_response_tool_name(self) -> None:
+        model = build_executor_model(_config())
+        tool = ResponseTool(model)
+        self.assertEqual(tool.name, "response")
 
 
 if __name__ == "__main__":

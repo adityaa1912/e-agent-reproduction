@@ -38,6 +38,7 @@ Per the Stage 4 instruction, generated source and configuration files contain **
 | Planner input prompt | minimal template in `planner.py` | any prompt | — (planner prompt not given) | §4.1 |
 | Requery prompt template | minimal template in `tools/requery.py` | authors' hidden template | "manually written task-specific prompt templates" | §4.2 |
 | Response prompt template | minimal template in `tools/response.py` | authors' hidden template | "manually written task-specific prompt templates" | §4.2 |
+| Planner multimodal input handling | `build_request` passes `question.images` to `ModelRequest`, but `ASSUMED_PLANNER_PROMPT_TEMPLATE` embeds only `question.text`; the stub model performs no image+text contextual analysis | richer multimodal prompt / vision encoding | "contextual analysis of both textual queries and visual inputs" | §4.1 |
 | Result threading between steps | image results → requery/response; requery query → text search | other routing | — | §4.2/§5.6 |
 | Executor error/timeout/retry | none (fail fast with clear errors) | retries, timeouts | — | §4.2 |
 | Tool precision/recall matching | set membership of tool usage per plan | span/parameter-level matching | precision/recall named only | §3.3 |
