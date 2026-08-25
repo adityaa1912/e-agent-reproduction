@@ -97,7 +97,7 @@ VisionLanguageModel (ABC)
 
 **Design constraints (preserved):**
 - The ABC (`ModelRequest` / `ModelResponse`) does **not** reference any provider-specific concepts (no HF, no CUDA, no API client types).
-- The factory (`create_model`) raises `UnsupportedProviderError` for unimplemented providers — new providers are added by extending the factory, not by modifying downstream code.
+- The paper skeleton factory (`src/eagent/models/factory.py`) stays **stub-only**. HuggingFace CPU inference belongs in `functional_extension/` and is injected into planner/executor constructors. Do not add `real_transformers` to the reproduction factory.
 - Planner and executor code call only `VisionLanguageModel.generate(request)`, never inspect the concrete provider type.
 - No new model abstractions are duplicated; the `VisionLanguageModel` ABC is the single interface.
 
@@ -129,7 +129,7 @@ class RealRemoteAPIVisionLanguageModel(VisionLanguageModel):
         # return ModelResponse(text=..., model_name=self.model_name, usage=..., raw=...)
 ```
 
-Both providers plug into the existing `factory.py` via a new provider key (e.g. `"real_transformers"` or `"remote_api"`).
+Neither provider is registered in `src/eagent` `factory.py`. Construct them in `functional_extension` and inject the `VisionLanguageModel` instance.
 
 ---
 
@@ -149,15 +149,9 @@ executor:
 ```
 
 ```yaml
-# configs/functional.yaml (NEW — real small VLM locally)
-mode: development
-planner:
-  provider: real_transformers
-  model_name: HuggingFaceTB/SmolVLM-256M-Instruct   # or similar small public VLM
-  quant: nf4
-executor:
-  provider: stub
-  model_name: stub-executor
+# functional_extension example (not a paper config; inject the model in code)
+# HuggingFaceTB/SmolVLM-256M-Instruct via RealTransformersVisionLanguageModel
+# executor remains stub
 ```
 
 ```yaml
@@ -283,7 +277,7 @@ A "FUNCTIONAL E-AGENT VALIDATION" milestone **explicitly does not claim paper re
 Two new concrete providers under the existing `VisionLanguageModel` ABC:
 - `RealTransformersVisionLanguageModel` — CPU-compatible, supports quantization flag, no CUDA required.
 - `RealRemoteAPIVisionLanguageModel` — thin HTTP wrapper; credentials from env vars only.
-Factory extended with new provider keys (`"real_transformers"`, `"remote_api"`); downstream code unchanged.
+Factory stays stub-only in `src/eagent`; CPU Transformers lives in `functional_extension`.
 
 ### 5. Proposed configuration strategy
 Extend existing `ModelSpec(provider, model_name)` with optional provider-specific fields (`quant`, `endpoint`, `api_key_env`) via Pydantic optional fields — **no schema duplication**. New configs: `functional.yaml` (local small VLM), `remote.yaml` (API). `development.yaml` unchanged.
@@ -448,7 +442,7 @@ If any of these conditions fail, the milestone is **not** achieved and the failu
 | Plain Transformers | No vLLM / ONNX export | Single dependency chain; official inference code works out‑of‑the‑box |
 | FP32 precision | Explicit `torch.float32` on CPU | Avoids bfloat16‑on‑CPU edge cases; modern CPUs handle float32 efficiently |
 | No external API | Purely local | No network latency, no API key cost, fully offline after model download |
-| Minimal config change | Extend existing `ModelSpec` | No new config schema; `provider: real_transformers` with `model_name` and optional `quant` fields |
+| Minimal config change | Inject `RealTransformersVisionLanguageModel` from `functional_extension`; do not extend the paper factory |
 
 ### 14.7 Exact dependencies that will be needed (not yet installed)
 

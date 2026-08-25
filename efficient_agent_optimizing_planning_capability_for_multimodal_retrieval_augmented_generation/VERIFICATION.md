@@ -23,6 +23,10 @@ OK
 
 All 77 tests pass offline.
 
+The repo-root model layer (`python -m unittest discover -s tests` from the repository root) has **7** tests: stub planner/executor construction, multimodal stub requests, independent instances, and `UnsupportedProviderError` for non-`stub` providers. HuggingFace / CPU VLM code is not in that suite.
+
+A separate functional-extension suite (8 mocked tests, not paper fidelity) lives in `functional_extension/` and is documented in `functional_extension/VERIFICATION.md`.
+
 ## End-to-end execution
 
 The smallest faithful E-Agent path was executed with the deterministic development components (scripted planner + `stub` executor model + offline stub search providers), with no GPU, network, API keys, or RemPlan data:
@@ -112,7 +116,7 @@ These assumptions are documented to keep a clear record of what is not verified 
 | `tests/test_data_and_evaluation.py` | RemPlan instance schema validation; per-tool precision/recall; Plan-acc exact-match; Param-acc and Param-sim raise without an injected criterion and compute with one; answer-judge 0-2 scale |
 | `tests/test_config_and_training.py` | Development config loads (records `benchmark_size: 200`, `planner_train_samples: 10000`); planner/executor models build from the config via the layer-1 factory; training scaffold reports paper values; `train()` raises `NotImplementedError` |
 | `tests/test_end_to_end_smoke.py` | The smallest faithful end-to-end path: a synthetic multimodal `Question` drives the single-pass `MRAGPlanner`, and the produced `MRAGPlan` runs through `TaskExecutor` dispatching all four tools in order (`image_search -> requery -> text_search -> response`) to a terminal Response with a non-empty final response |
-| `tests/test_model_layer.py` | Repo-root model layer: the `stub` provider builds; the `research` provider raises `UnsupportedProviderError` (model names only recorded) |
+| `tests/test_model_layer.py` (repo root; 7 tests) | The `stub` provider builds; the `research` provider raises `UnsupportedProviderError` (model names only recorded). No HuggingFace provider is wired into `src/eagent`. |
 
 ## Independence from unavailable assets
 

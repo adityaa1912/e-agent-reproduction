@@ -16,7 +16,6 @@ from eagent.models.config import EAgentModelConfig, ModelSpec
 from eagent.models.protocols import VisionLanguageModel
 from eagent.models.providers.stub import StubVisionLanguageModel
 
-# The only executable provider available at this step.
 STUB_PROVIDER = "stub"
 
 

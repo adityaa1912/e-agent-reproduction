@@ -1,40 +1,25 @@
-"""Transformers-based :class:`VisionLanguageModel` provider.
+"""CPU HuggingFace VisionLanguageModel used only for functional validation.
 
-Runs a HuggingFace multimodal model on CPU with no quantisation.
-Model weights are downloaded from Hugging Face only when
-:class:`RealTransformersVisionLanguageModel` is instantiated with a
-``model_id`` and ``generate`` is called; importing this module does not
-download anything.
+This module is not part of the paper skeleton. It lives outside ``src/eagent``
+and ``eagent_baseline``. Callers inject the returned model into planner or
+executor constructors; the reproduction factory stays stub-only.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from io import BytesIO
+from typing import Any, Dict, List
 
+from eagent.common.types import Image
 from eagent.models.protocols import ModelRequest, ModelResponse, VisionLanguageModel
 
 
-@dataclass(frozen=True)
-class _HfDevice:
-    cpu: str = "cpu"
-    cuda: str = "cuda"
-    mps: str = "mps"
-
-
-@dataclass(frozen=True)
-class _HfDtype:
-    float32: str = "float32"
-    bfloat16: str = "bfloat16"
-    float16: str = "float16"
-
-
 class RealTransformersVisionLanguageModel(VisionLanguageModel):
-    """A CPU-only Transformers provider for multimodal generation.
+    """CPU-only Transformers provider for a public substitute VLM.
 
-    Loads a HuggingFace ``AutoModelForVision2Seq`` model and its
-    ``AutoProcessor`` on construction.  Image inputs are accepted via
-    :class:`eagent.common.types.Image` (``url`` or ``path`` are supported).
+    Loads ``AutoModelForVision2Seq`` without ``device_map`` (no ``accelerate``).
+    Image bytes, paths, and URLs are all accepted. Prompts are chat-templated
+    with image placeholders so Idefics3 / SmolVLM processors receive tokens.
     """
 
     DEFAULT_MODEL_ID = "HuggingFaceTB/SmolVLM-256M-Instruct"
@@ -57,36 +42,53 @@ class RealTransformersVisionLanguageModel(VisionLanguageModel):
 
     def _ensure_loaded(self) -> tuple[Any, Any]:
         if self._model is None or self._processor is None:
+            import torch
             from transformers import AutoModelForVision2Seq, AutoProcessor
 
             self._processor = AutoProcessor.from_pretrained(self._model_id)
             self._model = AutoModelForVision2Seq.from_pretrained(
                 self._model_id,
-                torch_dtype=getattr(__import__("torch"), self._torch_dtype),
-                device_map=self._device,
+                torch_dtype=getattr(torch, self._torch_dtype),
             )
+            self._model = self._model.to(self._device)
         return self._model, self._processor
+
+    def _pil_image(self, img: Image) -> Any:
+        from PIL import Image as PILImage
+        from transformers.image_utils import load_image
+
+        if img.path is not None:
+            return PILImage.open(img.path)
+        if img.data is not None:
+            return PILImage.open(BytesIO(img.data))
+        if img.url is not None:
+            return load_image(img.url)
+        raise ValueError("Image has no path, data, or url")
+
+    def _chat_messages(self, request: ModelRequest) -> List[Dict[str, Any]]:
+        content: List[Dict[str, Any]] = [{"type": "image"} for _ in request.images]
+        content.append({"type": "text", "text": request.prompt})
+        return [{"role": "user", "content": content}]
 
     def generate(self, request: ModelRequest) -> ModelResponse:
         model, processor = self._ensure_loaded()
-
-        images: List[Any] = []
-        for img in request.images:
-            from PIL import Image as _PILImage
-            from transformers.image_utils import load_image
-
-            if img.path is not None:
-                pil_img = _PILImage.open(img.path)
-            else:
-                pil_img = load_image(img.url if img.url is not None else "")
-            images.append(pil_img)
-
+        images = [self._pil_image(img) for img in request.images]
+        templated = processor.apply_chat_template(
+            self._chat_messages(request),
+            add_generation_prompt=True,
+        )
         inputs = processor(
-            text=request.prompt,
+            text=templated,
             images=images if images else None,
             return_tensors="pt",
         )
-        inputs = {k: v.to(self._device) for k, v in inputs.items()}
+        if callable(getattr(inputs, "to", None)):
+            inputs = inputs.to(self._device)
+        else:
+            inputs = {
+                k: v.to(self._device) if callable(getattr(v, "to", None)) else v
+                for k, v in inputs.items()
+            }
 
         generate_kwargs: Dict[str, Any] = {
             "max_new_tokens": request.max_tokens if request.max_tokens is not None else 512,

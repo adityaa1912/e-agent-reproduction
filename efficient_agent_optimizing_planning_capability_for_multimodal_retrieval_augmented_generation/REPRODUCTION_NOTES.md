@@ -80,6 +80,7 @@ Exact reproduction requires the unreleased data, the undisclosed training recipe
 - Baselines (raw Qwen2-VL-72B, MMSearch, OmniSearch) — comparison methods, not the contribution.
 - RemPlan data collection/annotation and GPT-4o plan generation — dataset creation, not the method.
 - Real model serving/downloads and live search API clients — out of scope for an offline baseline.
+- HuggingFace CPU / SmolVLM inference — a substitute VLM for functional validation lives in `functional_extension/` and must not leak into `src/eagent` or `eagent_baseline`. The reproduction factory remains `stub`-only.
 
 ### Needed for full reproduction (not included)
 - The 10K planner training set and the fine-tuning recipe.
