@@ -5,10 +5,7 @@ from an :class:`EAgentModelConfig`. Provider-specific construction details are
 kept behind this factory so future code depends only on the abstract
 interface.
 
-Two executable providers are supported:
-- ``stub`` – deterministic development double.
-- ``real_transformers`` – CPU-only HuggingFace multimodal model.
-
+For this step exactly one executable provider is supported: ``stub``.
 The ``research`` provider (real InternVL2-8B / Qwen2-VL-72B) is intentionally
 NOT implemented here; requesting it fails clearly.
 """
@@ -18,10 +15,9 @@ from __future__ import annotations
 from eagent.models.config import EAgentModelConfig, ModelSpec
 from eagent.models.protocols import VisionLanguageModel
 from eagent.models.providers.stub import StubVisionLanguageModel
-from eagent.models.providers.transformers import RealTransformersVisionLanguageModel
 
+# The only executable provider available at this step.
 STUB_PROVIDER = "stub"
-REAL_TRANSFORMERS_PROVIDER = "real_transformers"
 
 
 class UnsupportedProviderError(ValueError):
@@ -31,17 +27,19 @@ class UnsupportedProviderError(ValueError):
         self.provider = provider
         super().__init__(
             f"Unsupported model provider: {provider!r}. "
-            f"Only {STUB_PROVIDER!r} and {REAL_TRANSFORMERS_PROVIDER!r} are executable."
+            f"Only the {STUB_PROVIDER!r} provider is executable at this step."
         )
 
 
 def create_model(spec: ModelSpec) -> VisionLanguageModel:
-    """Construct a :class:`VisionLanguageModel` from a :class:`ModelSpec`."""
+    """Construct a :class:`VisionLanguageModel` from a :class:`ModelSpec`.
+
+    Raises:
+        UnsupportedProviderError: if the spec names a provider that is not
+            executable at this step (anything other than ``stub``).
+    """
     if spec.provider == STUB_PROVIDER:
         return StubVisionLanguageModel(model_name=spec.model_name)
-    if spec.provider == REAL_TRANSFORMERS_PROVIDER:
-        model_id = spec.model_name
-        return RealTransformersVisionLanguageModel(model_id=model_id)
     raise UnsupportedProviderError(spec.provider)
 
 
