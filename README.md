@@ -1,4 +1,4 @@
-# E-Agent — Paper2Code Skeleton & Functional Extension
+# E-Agent — Functional Extension
 
 A deterministic, offline implementation of the **plan-then-execute** architecture from
 *Efficient Agent: Optimizing Planning Capability for Multimodal Retrieval Augmented Generation*
@@ -10,8 +10,7 @@ same architecture with real substitute models.
 > offline tests. It does **not** reproduce any paper metric. The paper-specific assets required for
 > a faithful reproduction — the fine-tuned InternVL2-8B planner, the Qwen2-VL-72B tool backbone, the
 > RemPlan benchmark, the 10K planner-training set, the undisclosed prompts, the exact metric
-> formulas, and the live Baidu/Tavily services — were **not located** in public sources (see
-> [PAPER_SPECIFIC_ASSET_AUDIT.md](PAPER_SPECIFIC_ASSET_AUDIT.md)). Public base checkpoints and
+> formulas, and the live Baidu/Tavily services — were **not located** in public sources. Public base checkpoints and
 > substitute models are **not** the paper's trained system and are never presented as such.
 
 ## The 30-second version
@@ -193,7 +192,6 @@ Planned, not yet implemented — do not read these as existing features:
 ```
 e-agent-reproduction/
 ├── README.md                       # this file
-├── CLAUDE.md                       # working rules
 ├── PAPER_SPECIFIC_ASSET_AUDIT.md   # why faithful reproduction is blocked
 ├── FUNCTIONAL_REPRODUCTION_PLAN.md # hardware + functional-validation plan
 ├── configs/                        # layer-1 model config (development/research)
