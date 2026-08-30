@@ -1,242 +1,214 @@
-# E-Agent — Functional Extension
+# E-Agent
 
-A deterministic, offline implementation of the **plan-then-execute** architecture from
-*Efficient Agent: Optimizing Planning Capability for Multimodal Retrieval Augmented Generation*
-(arXiv [`2508.08816`](https://arxiv.org/abs/2508.08816)), plus an isolated layer that exercises the
-same architecture with real substitute models.
+A research-grade implementation and experimental testbed for studying **planning in multimodal
+retrieval-augmented generation**, based on the E-Agent architecture from
+[arXiv:2508.08816](https://arxiv.org/abs/2508.08816).
 
-> **Status: NOT a reproduction of the paper's reported results.**
-> This repository reproduces the paper's *architecture and control-flow contract*, verified by
-> offline tests. It does **not** reproduce any paper metric. The paper-specific assets required for
-> a faithful reproduction — the fine-tuned InternVL2-8B planner, the Qwen2-VL-72B tool backbone, the
-> RemPlan benchmark, the 10K planner-training set, the undisclosed prompts, the exact metric
-> formulas, and the live Baidu/Tavily services — were **not located** in public sources. Public base checkpoints and
-> substitute models are **not** the paper's trained system and are never presented as such.
+The repository provides a deterministic, offline implementation of E-Agent's *plan-then-execute*
+control flow, together with an isolated layer for running the same architecture against real
+multimodal models. It is built to make planning behavior easy to inspect, test, and compare — not
+to restate the paper's published numbers.
 
-## The 30-second version
+## Overview
 
-The project is organized into three layers that are kept strictly separate:
-
-| Layer | What it is | Runs real models? | Reproduces the paper? |
-|-------|-----------|-------------------|-----------------------|
-| **1. Paper baseline** | Faithful skeleton of the E-Agent architecture, anchored line-by-line to the paper via `PAPER_SPEC.md`. Only a deterministic `stub` provider is executable. | No — stub only | Architecture/control-flow only. **Not** the reported results. |
-| **2. Functional extension** | An isolated layer that injects real *substitute* VLMs into the same planner interface to check the architecture runs end-to-end with a live model. | Yes — substitutes | No. Substitute-model validation, explicitly not paper reproduction. |
-| **3. Research extension** | Planned work: controlled planner evaluation and model comparison beyond exact reproduction. | Future | No — separate research track. |
-
-The paper baseline never imports the functional extension; substitute models are wired in by
-dependency injection only and are never registered in the reproduction's model factory.
-
-## Architecture
-
-E-Agent decouples *planning* from *execution*: a single-pass planner emits a complete structured
-plan, and a tool-aware executor carries it out to a terminal response.
+E-Agent separates *planning* from *execution*. A planner reads a multimodal question and emits one
+complete, structured plan; a tool-aware executor then carries that plan out to a terminal answer.
+This repository reconstructs that contract faithfully and wires it to a provider-independent model
+interface, so any vision-language model — a deterministic stub or a live API — can drive the planner
+through the same seam.
 
 ```
-multimodal question (text + image)
-        │
-        ▼
-  MRAGPlanner.plan()          single model call — no re-planning mid-run
-        │
-        ▼
-  MRAGPlan  =  [ PlanStep(tool, arguments), ... ]   ends with RESPONSE (invariant)
-        │
-        ▼
-  TaskExecutor.execute()      routes each step through registered Tools
-        │
-        ├─ image_search ─┐
-        ├─ text_search   │  results threaded through a mutable ExecutionState
-        ├─ requery       │
-        └─ response  ────┴─▶  terminal response
+Image + Question
+      │
+      ▼
+   Planner ───────────▶ Structured MRAG Plan        (single model call)
+                              │
+                              ▼
+                           Executor
+                              │
+        ┌───────────┬─────────┴─────────┬───────────┐
+        ▼           ▼                   ▼           ▼
+   image_search  text_search         requery     response
+        └───────────┴─────────┬─────────┴───────────┘
+                              ▼
+                        Final Response
 ```
 
-Component roles:
+## Design
 
-- **`VisionLanguageModel`** (`src/eagent/models/protocols.py`) — provider-independent ABC:
-  a `model_name` property and `generate(ModelRequest) -> ModelResponse`. Every model, real or
-  stub, is wired in through this one interface.
-- **`MRAGPlan` / `PlanStep` / `ToolName`** (`eagent_baseline/plan.py`) — the structured plan.
-  `MRAGPlan.validate()` enforces the invariant: non-empty, must **end with `RESPONSE`**, and
-  `RESPONSE` may appear only as the terminal step. JSON shape: `{"steps":[{"tool","arguments"}]}`.
-  Malformed or misordered output raises `PlanValidationError` — no repair, no retry.
-- **`MRAGPlanner`** (`eagent_baseline/planner.py`) — single-pass: calls the model exactly once
-  (asserted via `plan_call_count`).
-- **`TaskExecutor`** (`eagent_baseline/executor.py`) — dispatches each step to a registered `Tool`,
-  threading intermediate results through `ExecutionState`. Missing tools or missing queries raise
-  rather than silently degrade.
-- **Isolation** — the functional extension injects substitute models into this same interface. It
-  is never registered in the reproduction's `eagent.models.factory`, which stays stub-only.
+A few architectural decisions carry the project:
 
-## The three layers in detail
+- **Planner/executor separation.** `MRAGPlanner` produces a full plan; `TaskExecutor` runs it. No
+  model call happens mid-execution to re-plan.
+- **Single-pass planning.** The planner calls its model exactly once per question, asserted through
+  `plan_call_count`.
+- **Provider-independent model interface.** Every model implements one ABC —
+  `VisionLanguageModel` (`model_name` + `generate(ModelRequest) -> ModelResponse`) — so stubs and
+  real providers are interchangeable behind the same call.
+- **Structured `MRAGPlan`.** A plan is an ordered list of `PlanStep(tool, arguments)`, serialized as
+  `{"steps":[{"tool","arguments"}]}`.
+- **Terminal `Response` invariant.** `MRAGPlan.validate()` requires a non-empty plan that ends with
+  `RESPONSE`, with `RESPONSE` allowed only as the final step. Malformed or misordered output raises
+  `PlanValidationError` — there is no repair or retry.
+- **Dependency-injected experiments.** Real models are injected into the planner interface; they are
+  never registered in the reproduction's `eagent.models.factory`.
+- **Strict isolation.** The paper baseline never imports the functional extension. Substitute-model
+  code lives entirely under `functional_extension/`.
 
-### 1. Paper baseline (faithful skeleton)
+## What the repository contains
 
-Two code areas wired at runtime via `sys.path` injection (there is no packaging):
+Two code areas wired together at runtime via `sys.path` injection (there is no packaging):
 
-- **`src/eagent/`** — the provider-independent model layer: the `VisionLanguageModel` ABC,
+- `src/eagent/` — the provider-independent model layer: the `VisionLanguageModel` ABC,
   `ModelRequest`/`ModelResponse`, provider-neutral `Image`/`Question`, typed config, and a factory.
-  Only the `stub` provider is executable; the `research` provider raises `UnsupportedProviderError`.
-- **`efficient_agent_.../eagent_baseline/`** — the plan-then-execute baseline that consumes the
-  model layer: planner, executor, plan representation, four tools, and metric/data/training
-  *interfaces* that the paper supports but that are intentionally not runnable reproductions.
+  The `stub` provider is executable; the `research` provider raises `UnsupportedProviderError`.
+- `efficient_agent_.../eagent_baseline/` — the plan-then-execute baseline: plan representation,
+  planner, executor, four tools, and metric/data/training *interfaces* the paper supports. Each
+  behavior is mapped to a paper section in
+  [`PAPER_SPEC.md`](efficient_agent_optimizing_planning_capability_for_multimodal_retrieval_augmented_generation/PAPER_SPEC.md).
+- `functional_extension/` — an isolated layer that injects real substitute VLMs into the planner
+  interface and a model-agnostic evaluation harness.
 
-Every behavior is mapped to a paper section in
-[`PAPER_SPEC.md`](efficient_agent_optimizing_planning_capability_for_multimodal_retrieval_augmented_generation/PAPER_SPEC.md).
-The baseline fails loudly by design instead of inventing missing research details.
+## Three layers
 
-### 2. Functional extension (substitute-model validation)
+| Layer | Scope | Real models | State |
+|-------|-------|-------------|-------|
+| **Paper baseline** | E-Agent architecture and control flow, deterministic and offline | Stub only | Architecture reproduced; runs and tested |
+| **Functional extension** | Real multimodal provider experiments through the same planner interface | Substitutes (SmolVLM, Gemini) | Working; substitute-model validation |
+| **Research extension** | Planner evaluation and cross-model comparison | Substitutes | Harness in place; dataset and metrics in progress |
 
-`functional_extension/` checks that the architecture runs end-to-end with a *real* model, using
-public **substitute** VLMs — never the paper's trained system. Models are injected into a
-`FunctionalValidationPlanner`; the fail-loud parser and single-pass invariant are unchanged.
+The baseline reproduces the paper's *architecture*, not its results. The functional and research
+layers use public **substitute** models and never stand in for the paper's trained system.
 
-Two substitutes were exercised:
+## Validated experiments
 
-- **`HuggingFaceTB/SmolVLM-256M-Instruct` — tested and FAILED the structured-planning requirement.**
-  Wiring worked (one real CPU call, correct model id, image reached the provider, no stub fallback),
-  but the model could not satisfy the plan-ordering invariant: it produced syntactically correct
-  JSON yet placed `response` first, raising `PlanValidationError`. This is a model capability
-  ceiling, not a wiring bug. It is recorded, not hidden — see
+Two real models were run through the functional planner interface. Both are substitutes; neither
+reproduces the paper's trained system or its metrics.
+
+- **SmolVLM-256M** (`HuggingFaceTB/SmolVLM-256M-Instruct`) performed real multimodal inference on
+  CPU — one real call, correct model id, image reaching the provider, no stub fallback — but failed
+  the structured-planning requirement: it emitted syntactically valid JSON yet placed `response`
+  first, violating the terminal-`Response` invariant. This is a capability ceiling of a small
+  captioner-class model, documented in
   [MODEL_SELECTION.md](functional_extension/MODEL_SELECTION.md).
-- **`gemini-3.6-flash` — substitute planner validated (not paper reproduction).** A Gemini provider
-  (`eagent_functional/gemini_provider.py`, official `google-genai` SDK, API key from
-  `GEMINI_API_KEY`, structured JSON schema, no retry/repair/fallback) produces a valid,
-  `RESPONSE`-terminal plan through the same harness. The in-repo real end-to-end test is gated
-  behind an env flag **and** the API key, so it is skipped during ordinary offline runs; all other
-  Gemini tests are mocked.
-
-A remote substitute (`Qwen/Qwen2-VL-2B-Instruct`) was investigated but **not** implemented: no
-turnkey serverless OpenAI-compatible endpoint for the exact checkpoint could be verified (see
-[REMOTE_MODEL_ENDPOINT_AUDIT.md](functional_extension/REMOTE_MODEL_ENDPOINT_AUDIT.md)). No model was
-silently substituted.
-
-### 3. Research extension (future work)
-
-Beyond exact reproduction: controlled planner evaluation and cross-model comparison. The evaluation
-*harness* exists (`eagent_functional/planner_eval.py`, model-agnostic, records per case: id,
-question type, raw output, parsed plan, validity, tool sequence, plan length, planner latency,
-failure reason). The evaluation *dataset* and quantitative metrics do not yet exist — see
-[Roadmap](#roadmap). Nothing here reproduces a paper metric.
-
-## What is and isn't reproduced
-
-**Reproduced (architecture only):** the plan-then-execute control-flow contract, the single-pass
-planner, the structured `MRAGPlan` representation and its validation invariant, the tool interfaces
-and executor dispatch, and the evaluation/data/training *interfaces* the paper supports.
-
-**Not reproduced:** the fine-tuned InternVL2-8B planner, the Qwen2-VL-72B tool backbone, the RemPlan
-benchmark, the 10K planner-training set, the undisclosed prompt templates, the exact metric formulas,
-the GPT-4o judge configuration, and the live Baidu Image Search / Tavily services. All are
-UNVERIFIED / NOT LOCATED per [PAPER_SPECIFIC_ASSET_AUDIT.md](PAPER_SPECIFIC_ASSET_AUDIT.md). Public
-base checkpoints exist but are not the paper's trained system.
-
-## Testing & verification
-
-All suites use stdlib `unittest`, run fully offline, and require no GPU, keys, or datasets. The
-model layer and baseline use different working directories because of the `sys.path` bootstrap.
-
-| Suite | Tests | Notes |
-|-------|------:|-------|
-| Model layer (`tests/`, repo root) | 7 | Provider-independent layer; `research` provider rejection. |
-| Baseline (`efficient_agent_.../tests/`) | 77 | Plan/planner/executor/tools/agent/data/eval/training + deterministic end-to-end smoke path. |
-| Functional extension (`functional_extension/tests/`) | 62 | 58 run offline; **4 gated real tests skip** (2 real Gemini, 2 real SmolVLM) unless an env flag + key are set. All non-gated tests are mocked — no network. |
-
-```bash
-# Model layer — from repo root
-python -m unittest discover -s tests
-
-# Baseline — from inside the baseline directory
-cd efficient_agent_optimizing_planning_capability_for_multimodal_retrieval_augmented_generation
-python -m unittest discover -s tests -t .
-
-# Functional extension — from repo root
-python -m unittest discover -s functional_extension/tests
-```
-
-### Completed milestones
-
-- Paper2Code architecture reconstruction (baseline skeleton anchored to `PAPER_SPEC.md`).
-- Baseline test hardening (77 offline tests).
-- Deterministic end-to-end smoke path (stub providers).
-- Paper-specific asset audit (assets not located; documented).
-- Functional-extension isolation (injection-only; factory stays stub-only).
-- Real SmolVLM-256M multimodal inference wired and run on CPU.
-- SmolVLM-256M planner failure identified and documented (capability ceiling).
-- Gemini planner integration (SDK-based provider, structured JSON, fail-loud).
-- Gemini substitute planner validated end-to-end (gated real test).
-- Model-agnostic planner evaluation harness (`planner_eval.py`).
+- **Gemini 3.6 Flash** (`gemini-3.6-flash`) passed the gated real planner validation, producing a
+  valid `RESPONSE`-terminal plan through the same harness. The provider
+  (`eagent_functional/gemini_provider.py`) uses the official `google-genai` SDK, reads its key from
+  `GEMINI_API_KEY`, requests a structured JSON schema, and does no retry, repair, or fallback.
 
 ## Current status
 
-- **Works:** the deterministic offline baseline and all three test suites; substitute-model
-  injection into the planner interface; the Gemini substitute planner (via the gated real test).
-- **Blocked:** faithful paper reproduction — the required trained models, benchmark, training set,
-  prompts, metric formulas, and live services are not available.
-- **Experimentally validated (substitute only):** the architecture runs end-to-end with a real
-  planner model; a small captioner-class VLM (SmolVLM-256M) is insufficient for the ordering
-  invariant.
-- **Remains research:** an evaluation dataset, quantitative planner metrics, and cross-model
+- **Reproduced:** the plan-then-execute control-flow contract, single-pass planner, structured plan
+  and its validation invariant, tool interfaces, and executor dispatch — all deterministic and
+  offline.
+- **Working experiments:** real substitute models drive the planner interface; Gemini 3.6 Flash
+  produces valid plans; SmolVLM-256M's failure is characterized and recorded.
+- **In progress:** an evaluation dataset and quantitative planner metrics for cross-model
   comparison.
+- **Out of scope here:** the paper's reported numbers (see
+  [Reproduction boundaries](#reproduction-boundaries)).
 
-## Roadmap
+## Components
 
-Planned, not yet implemented — do not read these as existing features:
-
-1. A controlled planner-evaluation protocol on top of the existing harness.
-2. An initial 20-case evaluation dataset spanning the question taxonomy.
-3. Quantitative planner metrics (plan validity, tool-sequence shape, latency).
-4. Cross-model comparison of substitute planners.
-5. A research extension beyond exact reproduction, only after baseline measurements exist.
+| Area | Technology |
+|------|-----------|
+| Language | Python 3.11 |
+| Baseline deps | `pydantic>=2.0`, `pyyaml>=6.0` |
+| Tests | stdlib `unittest`, fully offline |
+| Local substitute VLM | `transformers` (`AutoModelForVision2Seq`, CPU/FP32) |
+| Remote substitute VLM | `google-genai` SDK (Gemini) |
+| Config | YAML, typed via pydantic |
 
 ## Repository structure
 
 ```
 e-agent-reproduction/
-├── README.md                       # this file
-├── PAPER_SPECIFIC_ASSET_AUDIT.md   # why faithful reproduction is blocked
-├── FUNCTIONAL_REPRODUCTION_PLAN.md # hardware + functional-validation plan
-├── configs/                        # layer-1 model config (development/research)
-├── src/eagent/                     # provider-independent model layer (stub executable)
-│   ├── common/types.py             # Image, Question, ...
+├── CLAUDE.md                       # working rules for this repo
+├── PAPER_SPECIFIC_ASSET_AUDIT.md   # evidence: which paper assets exist / are missing
+├── FUNCTIONAL_REPRODUCTION_PLAN.md # hardware snapshot + functional-validation plan
+├── configs/                        # layer-1 model config (development / research)
+├── src/eagent/                     # provider-independent model layer
+│   ├── common/types.py             # Image, Question
 │   └── models/                     # protocols, config, factory, providers/stub
-├── efficient_agent_.../            # paper baseline package + PAPER_SPEC.md + tests
-│   └── eagent_baseline/            # plan, planner, executor, agent, tools/, data, evaluation, training
+├── efficient_agent_.../            # paper baseline package
+│   ├── eagent_baseline/            # plan, planner, executor, agent, tools/, data, evaluation, training
+│   ├── PAPER_SPEC.md               # paper-claim → code mapping
+│   ├── REPRODUCTION_NOTES.md       # assumptions, deviations, blockers
+│   ├── VERIFICATION.md             # what the tests check
+│   └── tests/
 ├── functional_extension/           # isolated substitute-model layer
 │   ├── eagent_functional/          # gemini_provider, transformers_provider, planner_integration, planner_eval
+│   ├── MODEL_SELECTION.md          # SmolVLM failure + candidate analysis
+│   ├── REMOTE_MODEL_ENDPOINT_AUDIT.md
 │   └── tests/                      # mocked tests + gated real tests
 └── tests/                          # model-layer tests
 ```
 
-## Setup
+## Installation
 
-Baseline (minimal deps; no GPU/network/keys):
+Baseline only — no GPU, network, or keys:
 
 ```bash
 pip install -r efficient_agent_optimizing_planning_capability_for_multimodal_retrieval_augmented_generation/requirements.txt
 ```
 
-Functional extension (adds the substitute-model dependencies):
+Functional extension — adds the substitute-model dependencies:
 
 ```bash
 pip install -r functional_extension/requirements.txt
 ```
 
-Optional real-model API access (only for the gated tests). Provide credentials via environment
-variables — never hardcode a key, and never commit one:
+Real-model access is optional and used only by the gated tests. Supply credentials through the
+environment; never hardcode or commit a key:
 
 ```bash
-export GEMINI_API_KEY=...   # required only to run the gated real Gemini test
+export GEMINI_API_KEY=...
 ```
 
-## Reproducibility & honesty
+## Running tests
 
-- The baseline is deterministic and offline; passing tests verify software behavior of the
-  skeleton, not any paper number.
-- Functional experiments use public substitute models, clearly labeled as substitutes and kept out
-  of the reproduction's model factory.
-- Missing paper-specific assets are documented, not worked around; the code raises rather than
-  fabricating research details.
-- Experimental (substitute-model) claims are stated separately from paper claims, and no result
-  here should be read as reproducing a paper metric.
+All suites use stdlib `unittest` and run offline. The model layer and baseline use different working
+directories because of the `sys.path` bootstrap.
+
+```bash
+# Model layer (7 tests) — from repo root
+python -m unittest discover -s tests
+
+# Paper baseline (77 tests) — from inside the baseline directory
+cd efficient_agent_optimizing_planning_capability_for_multimodal_retrieval_augmented_generation
+python -m unittest discover -s tests -t .
+
+# Functional extension (62 tests) — from repo root
+python -m unittest discover -s functional_extension/tests
+```
+
+The functional suite has **62 tests**: 58 run offline with mocked responses, and **4 gated
+real-model tests** (2 Gemini, 2 SmolVLM) skip automatically unless an env flag and API key are set.
+Ordinary offline runs make no network calls.
+
+## Reproduction boundaries
+
+This repository reproduces E-Agent's architecture and control flow, not the paper's experimental
+results. The paper-specific assets required for a faithful reproduction — the fine-tuned InternVL2-8B
+planner, the Qwen2-VL-72B tool backbone, the RemPlan benchmark, the 10K planner-training set, the
+prompt templates, the exact metric formulas, the judge configuration, and the live Baidu / Tavily
+services — could not be located in public sources. Public base checkpoints and the substitute models
+used here are not the paper's trained system.
+
+Evidence and detail:
+[PAPER_SPECIFIC_ASSET_AUDIT.md](PAPER_SPECIFIC_ASSET_AUDIT.md) ·
+[REPRODUCTION_NOTES.md](efficient_agent_optimizing_planning_capability_for_multimodal_retrieval_augmented_generation/REPRODUCTION_NOTES.md) ·
+[REMOTE_MODEL_ENDPOINT_AUDIT.md](functional_extension/REMOTE_MODEL_ENDPOINT_AUDIT.md).
+
+## Roadmap
+
+Planned work, not yet implemented:
+
+1. A controlled planner-evaluation protocol on top of the existing harness.
+2. An initial 20-case evaluation dataset spanning the question taxonomy.
+3. Quantitative planner metrics (plan validity, tool-sequence shape, latency).
+4. Cross-model comparison of substitute planners.
+5. A research extension beyond exact reproduction, once baseline measurements exist.
 
 ## Citation
 
