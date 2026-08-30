@@ -61,7 +61,11 @@ datasets/
 
 # Postman local workspace
 .postman/
+postman
 
+
+# Freebuff
+.freebuff/
 # Certificates / private keys
 *.pem
 *.key
@@ -71,3 +75,5 @@ datasets/
 *.tar
 *.tar.gz
 CLAUDE.md
+*.md
+!README.md
